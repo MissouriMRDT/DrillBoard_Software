@@ -2,11 +2,17 @@
 
 
 // MUTABLE VARIABLES
-const int PIN_T1 = 1; // DS18B20
-const int PIN_M1 = 3; // Grove
-const int PIN_M3 = 5; // FC28
+const int PIN_T1 = 11; // DS18B20
+const int PIN_M1 = A2; // Grove
+const int PIN_M3 = A3; // FC28
 
-const int PIN_D = 0; // Drill pin
+const int PIN_D_INA = ; // 
+const int PIN_D_INB = ; // 
+const int PIN_D_CS = ; // Current sense
+const int PIN_D_PWM = ; // 
+const int PIN_D_CS_DIS = ; // Current Sense Disable
+const int PIN_D_ENA = ; // Two pin error detection
+const int PIN_D_ENB = ; // Two pin error detection 
 
 const byte DS18B20_ENABLE = 1;
 const byte GROVE_ENABLE = 9;
@@ -21,14 +27,11 @@ const int STEP_DELAY = 500; // milliseconds
 
 void drillEnable();
 void drillDisable();
-void constantDutyCycle(float dutyCyclePercent); 
-
-// IMMUTABLE VARIABLES
-int drill_percent_speed = 0;
 
 
 void setup() {
   Serial.begin(9600); // may change for drill
+  
 }
 
 void loop() {
@@ -67,31 +70,10 @@ void loop() {
 
 void drillEnable()
 {
-  setDrillSpeed(drill_percent_speed); 
-  while(drill_percent_speed < MAX_SPEED) {
-    delay(STEP_DELAY);
-    drill_percent_speed += DELTA_SPEED;
-    if(drill_percent_speed > MAX_SPEED)
-      drill_percent_speed = MAX_SPEED;
-    setDrillSpeed(drill_percent_speed);
-  }
-  return;
-}
 
-void setDrillSpeed(float dutyCyclePercent)
-{
-  float pwmDutyCycle = (float)((float)255 * dutyCyclePercent / 100); // 255 max PWM
-  analogWrite(PIN_D, (int)pwmDutyCycle);
 }
 
 void drillDisable()
 {
-  setDrillSpeed(drill_percent_speed);
-  while(drill_percent_speed > 0) {
-    delay(STEP_DELAY);
-    drill_percent_speed -=DELTA_SPEED;
-    if (drill_percent_speed < 0)
-      drill_percent_speed = 0;
-    setDrillSpeed(drill_percent_speed);
-  }
+
 }
