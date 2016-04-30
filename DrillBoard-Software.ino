@@ -4,33 +4,29 @@
 //          Pin Assignments         //
 //////////////////////////////////////
 
-#define PIN_T1          11 // DS18B20
-#define PIN_M1          A2 // Grove
-#define PIN_M3          A3 // FC28
+#define PIN_T1          		11 // DS18B20
+#define PIN_M1          		A2 // Grove
+#define PIN_M3          		A3 // FC28
 
-#define IN_A            5 // Input A
-#define IN_B            6 // Input B
-#define CS              A0 // Current sense
-#define PWM             7 // PWM
-#define CS_DIS          12 // Current Sense Disable
-#define EN_A            8 // Two pin error detection
-#define EN_B            9 // Two pin error detection 
+#define IN_A            		5 // Input A
+#define IN_B            		6 // Input B
+#define CS              		A0 // Current sense
+#define PWM             		7 // PWM
+#define CS_DIS          		12 // Current Sense Disable
+#define EN_A            		8 // Two pin error detection
+#define EN_B            		9 // Two pin error detection 
 
-////////////////////////////
-// Data IDs from RoveComm //
-////////////////////////////
+/////////////////////////////////////
+// Received Messages from RoveComm //
+/////////////////////////////////////
 
-#define DS18B20_ENABLE  0x00000001 // 1
-#define GROVE_ENABLE    0x00001001 // 9
-#define FC28_ENABLE     0x00001101 // 13
+#define DS18B20_ENABLE  		0x00000001 // 1
+#define GROVE_ENABLE    		0x00001001 // 9
+#define FC28_ENABLE     		0x00001101 // 13
 
-#define DRILL_FWD       0x00000010 // 2
-#define DRILL_STOP      0x00000011 // 3
-#define DRILL_REV       0x00000100 // 4
-
-#define DELTA_SPEED = 10;
-#define MAX_SPEED = 85;
-#define STEP_DELAY = 500; // milliseconds
+#define DRILL_FWD       		0x00000010 // 2
+#define DRILL_STOP      		0x00000011 // 3
+#define DRILL_REV       		0x00000100 // 4
 
 //////////////////////////////
 //  Drill Command Functions //
@@ -44,15 +40,15 @@ void drillStop();
 // Drew Bischoff Gripper functions //
 /////////////////////////////////////
 
-#define CLOCKWISE 0
-#define COUNTERCLOCKWISE 1
-#define DRILL_SPEED   50
+#define CLOCKWISE 					0
+#define COUNTERCLOCKWISE 		1
+#define DRILL_SPEED   			50
 
 // Current sensing constants
-#define K_FACTOR 770.0
-#define SENSE_RESISTOR 223.0
-#define MAX_RESOLUTION 1023.0 //previously 4096
-#define MAX_VOLTAGE 3.3 //previously 3.3
+#define K_FACTOR 						770.0
+#define SENSE_RESISTOR 			223.0
+#define MAX_RESOLUTION 			1023.0 //previously 4096
+#define MAX_VOLTAGE 				3.3 //previously 3.3
 #define CURRENT_SENSE_SCALE ((MAX_VOLTAGE*K_FACTOR/MAX_RESOLUTION)/SENSE_RESISTOR)
 
 
@@ -61,7 +57,6 @@ boolean stoppedMotor = true;
 int presentDirection = CLOCKWISE;
 
 void setMotorSpeed(int spd);
-void dd(int ms);
 void setDirection(int dir);
 void enableMotor();
 void stopRotation();
@@ -103,24 +98,18 @@ void loop() {
   // Get command from science board
   while(!Serial.available());
   byte drill_cmd = Serial.read();
-  float temp_read = 0;
-  byte * b;
   
   switch(drill_cmd){
     // Read sensors
     case GROVE_ENABLE:
-      Serial.write(static_cast<int>(roveSci_Grove_ReadHumid(PIN_M1)));
+      Serial.write(roveSci_Grove_ReadHumid(PIN_M1));
       break;
     case FC28_ENABLE:
-      Serial.write(static_cast<int>(roveSci_FC28_ReadHumid(PIN_M3)));
+      Serial.write(roveSci_FC28_ReadHumid(PIN_M3));
       break;
     case DS18B20_ENABLE:
-      temp_read = roveSci_DS18B20_ReadTemp(PIN_T1);
-      b = (byte *) &temp_read; // write float, weird serial spec
-      Serial.write(b[3]);
-      Serial.write(b[2]);
-      Serial.write(b[1]);
-      Serial.write(b[0]);  
+      Serial.write(static_cast<int>(10 * roveSci_DS18B20_ReadTemp(PIN_T1)));
+			// Scale back down after being received. 
       break;
     
     // Control drill
@@ -157,38 +146,6 @@ void drillStop() {
 
 
 float MAX_CURRENT = 5; //max Amps
-void dd(int ms){//"diagnostic delay" constantly checks for over current
-
-  //DEBUG: bypasses diagnostic. remove this in the final version!
-  delay(ms);
-  return;
-
-  int t = millis();
-  while((t+ms)>millis()){
-    if(digitalRead(EN_A)==0){
-      if(digitalRead(EN_B)==1){
-        Serial.println("Fault! EN_B HIGH");
-      }
-      else{
-        Serial.println("Fault! EN_B LOW");
-      }      
-      stopRotation();      
-      delay(5000);      
-    }
-    else if(readCurrent()>MAX_CURRENT){
-      Serial.println("Warning...");
-      delay(10);
-      if(readCurrent()>MAX_CURRENT){
-        stopRotation();
-        Serial.println("OVERCURRENT!");
-        delay(5000); 
-      }      
-    }
-    Serial.print("Amps: ");
-    Serial.println(readCurrent());
-    //delay(1);
-  }
-}
 
 // 0 < spd < 100
 void setMotorSpeed(int spd){
@@ -231,7 +188,7 @@ void rotateMotor(int dir, int spd){
     stopRotation();
   }
   if(stoppedMotor){
-      dd(10);//enough time to come to a complete stop
+      delay(10);//enough time to come to a complete stop
   } 
   setDirection(dir);
   enableMotor();
@@ -254,7 +211,7 @@ void rampPWM(int targetPWM){
       break;
     }
     setMotorSpeed(presentPWM);
-    dd(delayAmount);       
+    delay(delayAmount);       
   } 
 }
 
