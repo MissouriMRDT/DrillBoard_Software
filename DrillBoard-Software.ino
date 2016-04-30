@@ -62,7 +62,6 @@ void enableMotor();
 void stopRotation();
 void rotateMotor(int dir, int spd);
 void rampPWM(int targetPWM);
-float readCurrent();
 
 /////////////////////////
 //  Start board code ! //
@@ -144,9 +143,6 @@ void drillStop() {
 //     DREW BISCHOFF GRIPPER CODE: DO NOT CHANGE      //
 ////////////////////////////////////////////////////////
 
-
-float MAX_CURRENT = 5; //max Amps
-
 // 0 < spd < 100
 void setMotorSpeed(int spd){
   spd*=255;
@@ -205,7 +201,7 @@ void rampPWM(int targetPWM){
     else{
       presentPWM+=incrementAmount;
     }    
-    if(presentPWM < (targetPWM+incrementAmount/2.) && presentPWM > (targetPWM-incrementAmount/2.)){
+    if(presentPWM < (targetPWM+incrementAmount/2.0) && presentPWM > (targetPWM-incrementAmount/2.0)){
       presentPWM=targetPWM;
       setMotorSpeed(presentPWM);
       break;
@@ -213,18 +209,4 @@ void rampPWM(int targetPWM){
     setMotorSpeed(presentPWM);
     delay(delayAmount);       
   } 
-}
-
-//returns current in Amps.
-float readCurrent(){
-  float value = 0;//values to be added and averaged
-  int numValues = 40;//number of values to average
-  
-  for(int i = 0; i < numValues; i++){
-    float cur = analogRead(CS);
-    value+=analogRead(CS)*CURRENT_SENSE_SCALE;
-    //delay(1);
-  }
-  value/=numValues;
-  return value;
 }
