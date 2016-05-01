@@ -7,6 +7,11 @@ float roveSci_DS18B20_ReadTemp(int data_pin) {
   return float(ds.GetData());
 } */
 
+int roveSci_XD28_ReadHumidity(int data_pin) {
+	int sensorValue = 0;
+	return sensorValue;
+}
+
 // Arduino version
 float roveSci_DS18B20_ReadTemp(int data_pin) {
 	OneWire ds(data_pin);
