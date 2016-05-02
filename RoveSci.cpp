@@ -8,8 +8,10 @@ float roveSci_DS18B20_ReadTemp(int data_pin) {
 } */
 
 int roveSci_XD28_ReadHumidity(int data_pin) {
-	int sensorValue = 0;
-	return sensorValue;
+	if(sensorValue >= 100)
+			return 100;
+	else
+		return static_cast<int>(sensorValue); // not sure if cast required. Just being safe.
 }
 
 // Arduino version
@@ -44,20 +46,19 @@ float roveSci_DS18B20_ReadTemp(int data_pin) {
 }
 /* Tiva values: calibrate for Arduino */
 int roveSci_Grove_ReadHumid(int data_pin) {
-  int sensorValue = analogRead(data_pin) * 100 / 4095; // 1023 for arduino?
+  int sensorValue = analogRead(data_pin) * 100 / 1023; // 1023 for arduino?
   return  sensorValue;
 } 
 
 /* Tiva values: calibrate for Arduino 
-	Not being used, extreme low priority */
+	Not being used, extreme low priority 
 int roveSci_FC28_ReadHumid(int data_pin) {
   int percentage = -(analogRead(data_pin) - 4095) * 100 / 1850;
   if (percentage >= 100)
   	return 100;
   else
     return percentage;
-}
-
+} */
 /* SHT10 stuff
  //not being used anyway. No need to have Arduino version afaik 
 float roveSci_SHT10_ReadTemp(int data_pin, int clock_pin) {
