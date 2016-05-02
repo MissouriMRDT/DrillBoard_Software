@@ -8,6 +8,7 @@ float roveSci_DS18B20_ReadTemp(int data_pin) {
 } */
 
 int roveSci_XD28_ReadHumidity(int data_pin) {
+	int32_t sensorValue = (-static_cast<int32_t>(analogRead(data_pin)) + 1023) * 100 / 706;
 	if(sensorValue >= 100)
 			return 100;
 	else
