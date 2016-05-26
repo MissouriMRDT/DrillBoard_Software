@@ -1,0 +1,30 @@
+#######################################
+# Syntax Coloring Map For OneWire
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+RoveSense	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+RoveSense_TempDS18B20_read	KEYWORD2
+RoveSense_HumidityXD28_read	KEYWORD2
+RoveSense_HumidityCustom_read	KEYWORD2
+
+#######################################
+# Instances (KEYWORD2)
+#######################################
+
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+DS_BROADCAST_ALL 		LITERAL1 
+#define DS_CONVERT_TEMP    	LITERAL1
+#define DS_READ_SCRATCHPAD 	LITERAL1

@@ -1,0 +1,206 @@
+#include "EasyTransfer.h"
+#include "OneWire.h"
+
+/////////////////////////////////////
+// Drill Pins                      //
+/////////////////////////////////////
+
+// EN / Diag : First of two pin error detection on PB_0
+#define ERROR_A_PIN           		8
+// EN / Diag : Second of two pin error detection on PB_1
+#define ERROR_B_PIN            		9
+// IN : first of two pin enable on PD_5
+#define CONTROL_A_PIN          		5
+// IN : second of two pin enable  on PB_5
+#define CONTROL_B_PIN          		13
+// PWM on PD_6
+#define DRILL_SPEED_PIN          	6
+
+/////////////////////////////////////
+// Drill Commands                  //
+/////////////////////////////////////
+
+#define DRILL_STOP                0
+#define DRILL_FORWARD             1
+#define DRILL_REVERSE             2  
+
+#define RAMP_ANALOG_INCREMENT     5
+#define RAMP_DURATION_MILLIS      250                                    
+
+/////////////////////////////////////
+// Sensor Pins                     //
+/////////////////////////////////////
+
+#define PIN_T1              11 // PB3 (MOSI)
+#define PIN_T2              10 // PB2 (SS')
+#define PIN_T3              4  // PD4
+#define PIN_T4              3  // PD3 (INT1)
+
+#define PIN_M1              A2 // PC2
+#define PIN_M2              A1 // PC1
+//#define PIN_M3            A3 // PC3
+// No longer using M3
+#define PIN_M4              A4 // PC4 (SDA)
+
+//PC5
+#define  PIN_M4_D3          A5         
+//PC4
+#define  PIN_M4_D4          2
+
+/////////////////////////////////////
+// Sensor Commands                 //
+/////////////////////////////////////
+
+#define T1_ON               3
+#define T2_ON               4
+#define T3_ON               5
+#define T4_ON               6
+#define M1_ON               7
+#define M2_ON               8
+//#define M3_ON             9
+// No longer using M3
+#define M4_ON               10
+
+#define M4_DATA_FLIP_DELAY  1000
+
+#define TEMP_SCALE          10
+
+
+//////////////////////////////////
+//    EasyTransfer Protocol     //
+//////////////////////////////////
+
+struct SEND_DATA_STRUCTURE
+{
+  float t1_data;
+  float t2_data;
+  float t3_data;
+  float t4_data;
+  float m1_data;
+  float m2_data;
+  float m3_data;
+  float m4_data;
+  float drill_current;
+};
+
+struct RECEIVE_DATA_STRUCTURE 
+{
+  uint16_t drill_cmd;
+};
+
+RECEIVE_DATA_STRUCTURE receive_cmd;
+SEND_DATA_STRUCTURE    send_telem;
+
+EasyTransfer FromScienceBoard, ToScienceBoard;
+
+/////////////////////////
+//  Start board code ! //
+///////////////////////// 
+
+uint8_t last_drill_command = 0;
+
+void setup() 
+{
+  pinMode(ERROR_A_PIN, INPUT); 
+  pinMode(ERROR_B_PIN, INPUT); 
+  pinMode(CONTROL_A_PIN, OUTPUT); 
+  pinMode(CONTROL_B_PIN, OUTPUT); 
+
+  pinMode(DRILL_SPEED_PIN, OUTPUT); 
+  
+  //disable motors at start
+  analogWrite(DRILL_SPEED_PIN, 0);
+  digitalWrite(CONTROL_A_PIN,0);
+  digitalWrite(CONTROL_B_PIN,0);
+
+  FromScienceBoard.begin(details(receive_cmd), &Serial); // TODO : Look up &Serial replacement
+  ToScienceBoard.begin(details(send_telem), &Serial);
+}//end if  
+
+
+void loop() 
+{
+  //while(!Serial.available());
+  receive_cmd.drill_cmd = 0;
+  if(FromScienceBoard.receiveData()){
+  
+    switch(receive_cmd.drill_cmd)
+    {   
+      case DRILL_STOP:
+      
+        if(receive_cmd.drill_cmd != last_drill_command && last_drill_command != DRILL_STOP)   
+          rampAnalogWrite(DRILL_SPEED_PIN, 250, RAMP_ANALOG_INCREMENT, 0, RAMP_DURATION_MILLIS);
+  
+        digitalWrite(CONTROL_A_PIN,0);
+        digitalWrite(CONTROL_B_PIN,0);
+        last_drill_command = receive_cmd.drill_cmd;
+        break;
+  
+      case DRILL_FORWARD:
+           
+        if(receive_cmd.drill_cmd != last_drill_command && last_drill_command != DRILL_STOP)   
+          rampAnalogWrite(DRILL_SPEED_PIN, 250, RAMP_ANALOG_INCREMENT, 0, RAMP_DURATION_MILLIS);
+          
+        digitalWrite(CONTROL_A_PIN, 1);
+        digitalWrite(CONTROL_B_PIN, 0);
+        rampAnalogWrite(DRILL_SPEED_PIN, 0, RAMP_ANALOG_INCREMENT, 250, RAMP_DURATION_MILLIS);
+        last_drill_command = receive_cmd.drill_cmd;
+        break;
+        
+      case DRILL_REVERSE:
+      
+        if(receive_cmd.drill_cmd != last_drill_command && last_drill_command != DRILL_STOP)   
+          rampAnalogWrite(DRILL_SPEED_PIN, 250, RAMP_ANALOG_INCREMENT, 0, RAMP_DURATION_MILLIS);
+      
+        digitalWrite(CONTROL_A_PIN, 0);
+        digitalWrite(CONTROL_B_PIN, 1);
+        rampAnalogWrite(DRILL_SPEED_PIN, 0, RAMP_ANALOG_INCREMENT, 250, RAMP_DURATION_MILLIS);
+        last_drill_command = receive_cmd.drill_cmd;
+        break;
+      default:
+        break;
+    }//end switch 
+  }
+
+  send_telem.t1_data = roveSci_DS18B20_ReadTemp(PIN_T1);
+  send_telem.t2_data = roveSci_DS18B20_ReadTemp(PIN_T2);
+  send_telem.t3_data = roveSci_DS18B20_ReadTemp(PIN_T3);
+  send_telem.t4_data = roveSci_DS18B20_ReadTemp(PIN_T4);
+  send_telem.m1_data = roveSci_XD28_ReadHumidity(PIN_M1);
+  send_telem.m2_data = roveSci_XD28_ReadHumidity(PIN_M2);
+  send_telem.m3_data = 0; // No M3 on current implementation
+  send_telem.m4_data = roveSci_CustomMoisture(PIN_M4, PIN_M4_D3, PIN_M4_D4);
+  send_telem.drill_current = 0; // DEV : Current Sense readings sent back
+
+  ToScienceBoard.sendData();  
+
+}//end loop 
+
+
+int rampAnalogWrite(int write_pin, int analog_write_start_value, int analog_write_ramp_increments, int analog_write_end_value, int ramp_duration_millis) 
+{
+  int write_value = analog_write_start_value;
+  int ramp_delay_millis = ramp_duration_millis/analog_write_ramp_increments;
+  
+  if(write_value < analog_write_end_value)
+  {
+    while( write_value < analog_write_end_value)
+    { 
+      analogWrite(write_pin, write_value);     
+      delay(ramp_delay_millis);   
+      write_value += analog_write_ramp_increments;
+    }//end while
+    
+  }else{
+    
+    while( write_value > analog_write_end_value )
+    { 
+      analogWrite(write_pin, write_value);     
+      delay(ramp_delay_millis);   
+      write_value -= analog_write_ramp_increments;
+    }//end while
+  }//end if
+  
+  //last value written
+  return write_value;
+}//end fnctn
