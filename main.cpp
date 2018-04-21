@@ -97,6 +97,11 @@ void moveScrew(int16_t moveValue)
   screwInterface.runOutputControl(moveValue);
 }
 
+void moveGeneva(int8_t)
+{
+  
+}
+
 void switchToClosedLoopScrew()
 {
   screwInterface.switchModules(InputPosition, &alg);
