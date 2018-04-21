@@ -21,7 +21,8 @@ void processBaseStationCommands();
 void setup();
 void moveDrill(int16_t moveVal);
 void moveScrew(int16_t moveValue);
-void moveGeneva(int8_t moveValue);
+void moveGeneva(int8_t Position);
+void genevaMovePos(int8_t Direction);
 void switchToClosedLoopScrew();
 void switchToOpenLoopScrew();
 void closedLoopHandler();
@@ -31,7 +32,7 @@ void setScrewDestination(float degreesDestination);
 const uint16_t DrillId = 0xB54;
 const uint16_t ScrewId = 0xB55;
 const uint16_t ScrewPositionId = 0xB56;
-const uint8_t GenevaID = 1809;
+const uint16_t GenevaId = 1809;
 
 const uint8_t ip[4] = {192, 168, 1, 139};
 const uint8_t AlgK = 100;
