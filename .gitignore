@@ -1,0 +1,13 @@
+
+.ccsproject
+.cproject
+*.launch
+.project
+*.prefs
+*.opt
+Debug/
+RoveJointControl/
+RoveWare/
+targetConfigs/
+*.cmd
+tm4c1294ncpdt_startup_ccs.c
