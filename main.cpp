@@ -6,11 +6,13 @@ uint32_t screwDestination = 0;
 
 VNH5019 drillDriver(DRILLMOTOR1_GEN, DRILLMOTOR1_PWMPIN, DRILLMOTOR1_INAPIN, DRILLMOTOR1_INBPIN, false);
 VNH5019 screwDriver(SCREWMOTOR1_GEN, SCREWMOTOR1_PWMPIN, SCREWMOTOR1_INAPIN, SCREWMOTOR1_INBPIN, false);
+VNH5019 genevaDriver(SGENEVAMOTOR_GEN, GENEVAMOTOR_PWMPIN, GENEVAMOTOR_INAPIN, GENEVAMOTOR_INBPIN, false);
 Ma3Encoder12b encoder(ENCODERGEN, ENCODERPIN);
 PIAlgorithm alg(AlgK, AlgI, AlgDt, &encoder);
 
 SingleMotorJoint drillInterface(InputPowerPercent, &drillDriver);
 SingleMotorJoint screwInterface(InputPowerPercent, &screwDriver);
+SingleMotorJoint screwInterface(InputPowerPercent, &genevaDriver);
 RoveTimer_Handle loopTimer;
 
 /**
@@ -61,6 +63,10 @@ void processBaseStationCommands()
         setScrewDestination(*((float*)commandData));
         break;
 
+      case GenevaId;
+        moveGeneva(*((int8_t*)commandData));
+        break;
+
       default:
         break;
     }
@@ -95,6 +101,44 @@ void moveScrew(int16_t moveValue)
   }
 
   screwInterface.runOutputControl(moveValue);
+}
+
+void moveGeneva(int8_t Position)
+{
+  static int currentPosition = 0;
+  int movePosition = Position-currentPosition;
+  int Direction;
+
+  if (movePosition > 0)
+  {
+    Direction = 1;
+  }
+
+  if (movePosition < 0)
+  {
+    Direction = -1;
+    movePosition = -movePosition;
+  }
+
+  for(int i = 0; i < movePosition; i++)
+  {
+    genevaMovePos(Direction);
+  }
+}
+
+void genevaMovePos(int8_t Direction)
+{
+  for(int speed = 1; speed <1000; speed++)
+  {
+    genevaInterface.runOutputControl(speed*Direction);
+  }
+
+  genevaInterface.runOutputControl(1000*Direction);
+
+  while(checkLimSwitch);
+  while(!checkLimSwitch);
+
+  genevaInterface.runOutputControl(0);
 }
 
 void switchToClosedLoopScrew()

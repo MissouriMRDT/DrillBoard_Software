@@ -10,7 +10,7 @@
 
 #include <stdint.h>
 
-//screw on X9
+//screw on X9 Motor 1
 const uint8_t SCREWMOTOR1_INAPIN = PL_0;
 const uint8_t SCREWMOTOR1_INBPIN = PH_2;
 const uint8_t SCREWMOTOR1_PWMPIN = PF_1;
