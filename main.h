@@ -11,6 +11,7 @@
 #include "RoveBoard_TivaTM4C1294NCPDT.h"
 #include "DrillPins.h"
 #include "ScrewPins.h"
+#include "GenevaPins.h"
 #include "RoveComm.h"
 #include "RoveJointControl.h"
 #include "VNH5019.h"
