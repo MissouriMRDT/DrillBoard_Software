@@ -42,7 +42,7 @@ void setup()
   }
 
   positionCounterBlock = rovePermaMem_useBlock(0, 255);
-  rovePermaMem_WriteBlockByte(positionCounterBlock, 0, 0); //remember to comment this out after the first  flash
+ // rovePermaMem_WriteBlockByte(positionCounterBlock, 0, 0); //remember to comment this out after the first  flash
 }
 
 void processBaseStationCommands()
@@ -116,26 +116,42 @@ void moveScrew(int16_t moveValue)
 
 void moveGeneva(int8_t Position)
 {
-  uint8_t currentPosition = 1;
-  rovePermaMem_ReadBlockByte(positionCounterBlock, 0, &currentPosition);
+  if(Position > 5)
+  {
+      return;
+  }
+
+  uint8_t temp;
+  rovePermaMem_ReadBlockByte(positionCounterBlock, 0, &temp);
+
+  int8_t currentPosition = temp;
 
   int movePosition = Position-currentPosition;
 
   for(int i = 0; i < abs(movePosition); i++)
   {
     genevaMovePos(sign(movePosition));
-  }
+    currentPosition += 1*sign(movePosition);
 
-  currentPosition = Position;
-  rovePermaMem_WriteBlockByte(positionCounterBlock, 0, currentPosition);
+    if(currentPosition < 0)
+    {
+      currentPosition = 5;
+    }
+    else if(currentPosition > 5)
+    {
+      currentPosition = 0;
+    }
+
+    rovePermaMem_WriteBlockByte(positionCounterBlock, 0, currentPosition);
+  }
 }
 
 void genevaMovePos(int8_t Direction)
 {
   genevaInterface.runOutputControl(1000*Direction);
 
-  while(checkLimSwitchHit(GENEVA_LIM_PIN));
-  while(!checkLimSwitchHit(GENEVA_LIM_PIN));
+ // while(checkLimSwitchHit(GENEVA_LIM_PIN));
+ // while(!checkLimSwitchHit(GENEVA_LIM_PIN));
 
   genevaInterface.runOutputControl(0);
 }

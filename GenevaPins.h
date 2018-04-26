@@ -15,6 +15,6 @@ const uint8_t GENEVAMOTOR_INAPIN = PH_1;
 const uint8_t GENEVAMOTOR_INBPIN = PA_7;
 const uint8_t GENEVAMOTOR_PWMPIN = PK_4;
 const uint8_t GENEVAMOTOR_GEN = 3;
-const uint8_t GENEVA_LIM_PIN = PK_1;
+const uint8_t GENEVA_LIM_PIN = PK_1;     //X7 LS1
 
 #endif /* DRILLPINS_H_ */
