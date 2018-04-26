@@ -13,7 +13,9 @@ PIAlgorithm alg(AlgK, AlgI, AlgDt, &encoder);
 SingleMotorJoint drillInterface(InputPowerPercent, &drillDriver);
 SingleMotorJoint screwInterface(InputPowerPercent, &screwDriver);
 SingleMotorJoint genevaInterface(InputPowerPercent, &genevaDriver);
+
 RoveTimer_Handle loopTimer;
+RovePermaMem_Block positionCounterBlock;
 
 /**
  * main.cpp
@@ -38,6 +40,9 @@ void setup()
     encoder.getFeedback();
     delay(4);
   }
+
+  positionCounterBlock = rovePermaMem_useBlock(0, 255);
+  rovePermaMem_WriteBlockByte(positionCounterBlock, 0, 0); //remember to comment this out after the first  flash
 }
 
 void processBaseStationCommands()
@@ -118,15 +123,12 @@ void moveGeneva(int8_t Position)
   {
     genevaMovePos(sign(movePosition));
   }
+
+  currentPosition = Position;
 }
 
 void genevaMovePos(int8_t Direction)
 {
-  for(int speed = 1; speed <1000; speed++)
-  {
-    genevaInterface.runOutputControl(speed*Direction);
-  }
-
   genevaInterface.runOutputControl(1000*Direction);
 
   while(checkLimSwitchHit(GENEVA_LIM_PIN));
