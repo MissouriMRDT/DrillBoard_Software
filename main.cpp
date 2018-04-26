@@ -116,7 +116,9 @@ void moveScrew(int16_t moveValue)
 
 void moveGeneva(int8_t Position)
 {
-  static int currentPosition = 0;
+  uint8_t currentPosition = 1;
+  rovePermaMem_ReadBlockByte(positionCounterBlock, 0, &currentPosition);
+
   int movePosition = Position-currentPosition;
 
   for(int i = 0; i < abs(movePosition); i++)
@@ -125,6 +127,7 @@ void moveGeneva(int8_t Position)
   }
 
   currentPosition = Position;
+  rovePermaMem_WriteBlockByte(positionCounterBlock, 0, currentPosition);
 }
 
 void genevaMovePos(int8_t Direction)
