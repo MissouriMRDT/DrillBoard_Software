@@ -60,8 +60,14 @@ void processBaseStationCommands()
         break;
 
       case ScrewPositionId:
-        setScrewDestination(*((float*)commandData));
+      {
+        //for some reason TI's compilers throw a shitfit about float pointers unless you
+        //do it this way.
+        volatile float *data = (float*)commandData;
+        volatile float temp = data[0];
+        setScrewDestination(temp);
         break;
+      }
 
       case GenevaId:
         moveGeneva(*((int8_t*)commandData));
@@ -107,22 +113,10 @@ void moveGeneva(int8_t Position)
 {
   static int currentPosition = 0;
   int movePosition = Position-currentPosition;
-  int Direction;
 
-  if (movePosition > 0)
+  for(int i = 0; i < abs(movePosition); i++)
   {
-    Direction = 1;
-  }
-
-  if (movePosition < 0)
-  {
-    Direction = -1;
-    movePosition = -movePosition;
-  }
-
-  for(int i = 0; i < movePosition; i++)
-  {
-    genevaMovePos(Direction);
+    genevaMovePos(sign(movePosition));
   }
 }
 
