@@ -12,11 +12,12 @@
 #include "DrillPins.h"
 #include "ScrewPins.h"
 #include "GenevaPins.h"
-#include "RoveComm.h"
-#include "RoveJointControl.h"
-#include "VNH5019.h"
-#include "Ma3Encoder12b.h"
-#include "PIAlgorithm.h"
+#include "RoveWare/RoveComm.h"
+#include "RoveWare/RoveMotionControl/RoveMotionControl.h"
+#include "RoveWare/RoveMotionControl/MotionAxises/SingleMotorAxis.h"
+#include "RoveWare/RoveMotionControl/OutputDevices/VNH5019.h"
+#include "RoveWare/RoveMotionControl/FeedbackDevices/Ma3Encoder12b.h"
+#include "RoveWare/RoveMotionControl/IOConverters/PIAlgorithm.h"
 
 void processBaseStationCommands();
 void setup();

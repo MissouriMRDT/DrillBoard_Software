@@ -8,9 +8,9 @@ VNH5019 drillDriver(DRILLMOTOR1_GEN, DRILLMOTOR1_PWMPIN, DRILLMOTOR1_INAPIN, DRI
 VNH5019 screwDriver(SCREWMOTOR1_GEN, SCREWMOTOR1_PWMPIN, SCREWMOTOR1_INAPIN, SCREWMOTOR1_INBPIN, false);
 VNH5019 genevaDriver(GENEVAMOTOR_GEN, GENEVAMOTOR_PWMPIN, GENEVAMOTOR_INAPIN, GENEVAMOTOR_INBPIN, false);
 
-SingleMotorJoint drillInterface(InputPowerPercent, &drillDriver);
-SingleMotorJoint screwInterface(InputPowerPercent, &screwDriver);
-SingleMotorJoint genevaInterface(InputPowerPercent, &genevaDriver);
+SingleMotorAxis drillInterface(InputPowerPercent, &drillDriver);
+SingleMotorAxis screwInterface(InputPowerPercent, &screwDriver);
+SingleMotorAxis genevaInterface(InputPowerPercent, &genevaDriver);
 
 RoveTimer_Handle loopTimer;
 RovePermaMem_Block positionCounterBlock;
