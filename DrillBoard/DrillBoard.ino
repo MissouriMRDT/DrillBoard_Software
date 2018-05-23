@@ -5,7 +5,7 @@
 
 const uint8_t DRILL_INA_PIN  = PH_0;
 const uint8_t DRILL_INB_PIN  = PP_5;
-const uint8_t DRILL_PWM_PIN = PG_1;
+const uint8_t DRILL_PWM_PIN  = PG_1;
 
 /////////////////////////////////////////////////////////////////
 // Geneva pins drive Motor 2 on header X7
@@ -24,22 +24,15 @@ const uint8_t LEADSCREW_INA_PIN           = PL_0;
 const uint8_t LEADSCREW_INB_PIN           = PH_2;
 const uint8_t LEADSCREW_PWM_PIN           = PF_1;
 
-const uint8_t LEADSCREW_LIMIT_SWITCH_1_PIN  = PE_3; //Uses LS 1 on X9; Bottom LS
-const uint8_t LEADSCREW_LIMIT_SWITCH_2_PIN  = PE_2; //Uses LS 2 on X9; Deploy LS
-const uint8_t LEADSCREW_LIMIT_SWITCH_3_PIN  = PE_1; //Uses LS 3 on X9; Reload LS
-const uint8_t LEADSCREW_LIMIT_SWITCH_4_PIN  = PE_0; //Uses LS 4 on X9; Empty LS
-const uint8_t LEADSCREW_LIMIT_SWITCH_5_PIN  = PB_5; //Uses LS 3 on X7; Top LS
-
-#define LEADSCREW_BOTTOM_LIMIT_SWITCH_PIN  LEADSCREW_LIMIT_SWITCH_1_PIN
-#define LEADSCREW_DEPLOY_LIMIT_SWITCH_PIN  LEADSCREW_LIMIT_SWITCH_2_PIN
-#define LEADSCREW_RELOAD_LIMIT_SWITCH_PIN  LEADSCREW_LIMIT_SWITCH_3_PIN
-#define LEADSCREW_EMPTY_LIMIT_SWITCH_PIN   LEADSCREW_LIMIT_SWITCH_4_PIN
-#define LEADSCREW_TOP_LIMIT_SWITCH_PIN     LEADSCREW_LIMIT_SWITCH_5_PIN
-
+const uint8_t LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN  = PE_3; //Uses LS 1 on X9
+const uint8_t LEADSCREW_LIMIT_SWITCH_2_DEPLOY_PIN  = PE_2; //Uses LS 2 on X9
+const uint8_t LEADSCREW_LIMIT_SWITCH_3_RELOAD_PIN  = PE_1; //Uses LS 3 on X9
+const uint8_t LEADSCREW_LIMIT_SWITCH_4_EMPTY_PIN   = PE_0; //Uses LS 4 on X9
+const uint8_t LEADSCREW_LIMIT_SWITCH_5_TOP_PIN     = PB_5; //Uses LS 3 on X7
 ////////////////////////////////////////////
 //Global Consts
-const int LEADSCREW_CLOSED_LOOP_SPEED = 500;
-const int GENEVA_CLSED_LOOP_SPEED    = 500;
+const int LEADSCREW_TO_POSITION_SPEED = 500;
+const int GENEVA_TO_POSITION_SPEED    = 500;
 
 //Global variables
 uint16_t drill_speed;
@@ -98,22 +91,22 @@ void setup()
   pinMode(DRILL_INB_PIN,     OUTPUT);
   pinMode(DRILL_PWM_PIN,     OUTPUT);
   
+  pinMode(GENEVA_INA_PIN,    OUTPUT);
   pinMode(GENEVA_INB_PIN,    OUTPUT);
-  pinMode(GENEVA_INB_PIN,    OUTPUT);
-  pinMode(GENEVA_INB_PIN,    OUTPUT);
+  pinMode(GENEVA_PWM_PIN,    OUTPUT);
   
+  pinMode(LEADSCREW_INA_PIN, OUTPUT);
   pinMode(LEADSCREW_INB_PIN, OUTPUT);
-  pinMode(LEADSCREW_INB_PIN, OUTPUT);
-  pinMode(LEADSCREW_INB_PIN, OUTPUT);
+  pinMode(LEADSCREW_PWM_PIN, OUTPUT);
 
   pinMode(GENEVA_LIMIT_SWITCH_PIN,      INPUT);
   pinMode(CAROUSEL_LIMIT_SWITCH_PIN,    INPUT);
 
-  pinMode(LEADSCREW_LIMIT_SWITCH_1_PIN, INPUT);
-  pinMode(LEADSCREW_LIMIT_SWITCH_2_PIN, INPUT);
-  pinMode(LEADSCREW_LIMIT_SWITCH_3_PIN, INPUT);
-  pinMode(LEADSCREW_LIMIT_SWITCH_4_PIN, INPUT);
-  pinMode(LEADSCREW_LIMIT_SWITCH_5_PIN, INPUT);
+  pinMode(LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN, INPUT);
+  pinMode(LEADSCREW_LIMIT_SWITCH_2_DEPLOY_PIN, INPUT);
+  pinMode(LEADSCREW_LIMIT_SWITCH_3_RELOAD_PIN, INPUT);
+  pinMode(LEADSCREW_LIMIT_SWITCH_4_EMPTY_PIN,  INPUT);
+  pinMode(LEADSCREW_LIMIT_SWITCH_5_TOP_PIN,    INPUT);
   
   LeadScrewMotor.begin(LEADSCREW_INA_PIN, LEADSCREW_INB_PIN, LEADSCREW_PWM_PIN);
   GenevaMotor.begin(   GENEVA_INA_PIN,    GENEVA_INB_PIN,    GENEVA_PWM_PIN   );   
@@ -139,11 +132,17 @@ void loop()
       leadscrew_speed = *(int16_t*)(data);
       leadscrew_going_up   = (leadscrew_speed == abs(leadscrew_speed));
       
-      if(digitalRead(LEADSCREW_TOP_LIMIT_SWITCH_PIN)    &&  leadscrew_going_up) break; //If you're trying to go up   when the top    limit switch is engaged, break
-      if(digitalRead(LEADSCREW_BOTTOM_LIMIT_SWITCH_PIN) && !leadscrew_going_up) break; //If you're trying to go down when the bottom limit switch is engaged, break
-      
+      if   (digitalRead(LEADSCREW_LIMIT_SWITCH_5_TOP_PIN)    &&  leadscrew_going_up) 
+	  {  
+	    break; //If you're trying to go up when the top limit switch is engaged, break
+      }
+	  else if(digitalRead(LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN) && !leadscrew_going_up) 
+	  {
+		break; //If you're trying to go down when the bottom limit switch is engaged, break
+      }
+	  
       LeadScrewMotor.drive(leadscrew_speed); 
-      leadscrew_goto_position = 0;      
+      leadscrew_goto_position = 0;  //Set to 0 so we don't try to go to a position    
       Watchdog.clear();
       break;
 
@@ -161,13 +160,13 @@ void loop()
       break;
     
     case LEADSCREW_TO_LIMIT_SWITCH:
-       leadscrew_goto_position = *(int8_t*)data;
+       leadscrew_goto_position = *(int8_t*)data;  //Set to the position we're trying to get to
        Watchdog.clear();
        break;
     
     case GENEVA_TO_POSITION:
       geneva_goto_position = *(int8_t*)data;
-      if(geneva_goto_position == 1) geneva_position = 2; //Special Case: To set the geneva home based on LS readings instead of position memory
+      if(geneva_goto_position == 1) geneva_position = 2; //Special Case: To set the geneva home based on LS readings instead of position memory for position 1
       Watchdog.clear();
       break;    
     default:
@@ -177,29 +176,61 @@ void loop()
   ///////////////////////////////
   //    LeadScrew Functions    //
   ///////////////////////////////
-
   //Limit Switch Stop////////////////////////////////////////////////////////////////////////////////////
-  if(digitalRead(LEADSCREW_TOP_LIMIT_SWITCH_PIN)    &&  leadscrew_going_up) LeadScrewMotor.brake(0);
-  if(digitalRead(LEADSCREW_BOTTOM_LIMIT_SWITCH_PIN) && !leadscrew_going_up) LeadScrewMotor.brake(0);
+  if(digitalRead(LEADSCREW_LIMIT_SWITCH_5_TOP_PIN)    &&  leadscrew_going_up)
+  {
+    LeadScrewMotor.brake(0);
+  }
+  else if(digitalRead(LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN) && !leadscrew_going_up) 
+  {
+    LeadScrewMotor.brake(0);
+  }
 
-  //Track Drill Position////////////////////////////////////////////////////////////////////
-  if(digitalRead(LEADSCREW_LIMIT_SWITCH_4_PIN) &&  leadscrew_going_up) leadscrew_position = 4;
-  if(digitalRead(LEADSCREW_LIMIT_SWITCH_4_PIN) && !leadscrew_going_up) leadscrew_position = 3;
-
-  if(digitalRead(LEADSCREW_LIMIT_SWITCH_3_PIN) &&  leadscrew_going_up) leadscrew_position = 3;
-  if(digitalRead(LEADSCREW_LIMIT_SWITCH_3_PIN) && !leadscrew_going_up) leadscrew_position = 2;
-  
-  if(digitalRead(LEADSCREW_LIMIT_SWITCH_2_PIN) &&  leadscrew_going_up) leadscrew_position = 2;
-  if(digitalRead(LEADSCREW_LIMIT_SWITCH_2_PIN) && !leadscrew_going_up) leadscrew_position = 1;
+  //Track LeadScrew Position//////////////////////////////////////////////////////
+  if(digitalRead(LEADSCREW_LIMIT_SWITCH_4_EMPTY_PIN)  &&  leadscrew_going_up)
+  {
+    leadscrew_position = 4;
+  }
+  else if(digitalRead(LEADSCREW_LIMIT_SWITCH_4_EMPTY_PIN)  && !leadscrew_going_up)
+  {
+    leadscrew_position = 3;
+  }
+  else if(digitalRead(LEADSCREW_LIMIT_SWITCH_3_RELOAD_PIN) &&  leadscrew_going_up)
+  {
+    leadscrew_position = 3;
+  }
+  else if(digitalRead(LEADSCREW_LIMIT_SWITCH_3_RELOAD_PIN) && !leadscrew_going_up)
+  {
+    leadscrew_position = 2;
+  }
+  else if(digitalRead(LEADSCREW_LIMIT_SWITCH_2_DEPLOY_PIN) &&  leadscrew_going_up) 
+  {
+    leadscrew_position = 2;
+  }
+  else if(digitalRead(LEADSCREW_LIMIT_SWITCH_2_DEPLOY_PIN) && !leadscrew_going_up) 
+  {
+    leadscrew_position = 1;
+  }
 
   //Move LeadScrew To position//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  if(leadscrew_goto_position = leadscrew_position)       LeadScrewMotor.brake(0);                            //If you're at    the position, break
-  else if (leadscrew_position < leadscrew_goto_position) LeadScrewMotor.drive(LEADSCREW_CLOSED_LOOP_SPEED);  //If you're below the position, move up
-  else                                                   LeadScrewMotor.drive(LEADSCREW_CLOSED_LOOP_SPEED);  //else                          move down
+  if(leadscrew_goto_position == leadscrew_position)       
+  {
+	LeadScrewMotor.brake(0);                            //If you're at the position, break
+  }
+  else if (leadscrew_position < leadscrew_goto_position)
+  {
+    LeadScrewMotor.drive( LEADSCREW_TO_POSITION_SPEED);  //If you're below the position, move up
+    leadscrew_going_up = TRUE;
+  }
+  else 
+  {
+    LeadScrewMotor.drive(-LEADSCREW_TO_POSITION_SPEED);  //else move down
+    leadscrew_going_up = FALSE
+  }
 
 
   //////////////////////////////////////////
-  //     Geneva Closed Loop Functions     //
+  //     Geneva To Position Functions     //
   //////////////////////////////////////////
   if(geneva_goto_position)
   {
@@ -209,27 +240,32 @@ void loop()
       geneva_position = 1;
       while(digitalRead(GENEVA_LIMIT_SWITCH_PIN))
        {
-         GenevaMotor.drive(GENEVA_CLSED_LOOP_SPEED);
+         GenevaMotor.drive(GENEVA_TO_POSITION_SPEED);
        }
     }
-
-    //Increment Geneva Position if limit switch is tripped
-    if(digitalRead(GENEVA_LIMIT_SWITCH_PIN))
+   //Increment Geneva Position if limit switch is tripped
+    else if(digitalRead(GENEVA_LIMIT_SWITCH_PIN))
     {
        geneva_position ++;
        while(digitalRead(GENEVA_LIMIT_SWITCH_PIN))
        {
-         GenevaMotor.drive(GENEVA_CLSED_LOOP_SPEED);
+         GenevaMotor.drive(GENEVA_TO_POSITION_SPEED);
        }
      }
 
     //Geneva_position overflow//////////////////
     if(geneva_position = 7) geneva_position = 1;
 
-    //Geneva Goto Position////////////////////////////////////////////////////////////////////////
+    //Geneva Goto Position////////////////////////////////////////////////////////////////////////ToDo Make Else
 
-    if(geneva_position != geneva_goto_position) GenevaMotor.drive(GENEVA_CLSED_LOOP_SPEED);
-    if(geneva_position == geneva_goto_position) GenevaMotor.brake(GENEVA_CLSED_LOOP_SPEED); 
+    if(geneva_position != geneva_goto_position)
+    {
+      GenevaMotor.drive(GENEVA_TO_POSITION_SPEED);
+    }
+    else
+    {
+      GenevaMotor.brake(GENEVA_TO_POSITION_SPEED); 
+    }
   }
 
   
