@@ -1,5 +1,19 @@
 #include "RoveWare.h"
 
+// My opinions:
+
+// We should add to rovecomm telemetry data id's LEADSCREW_AT_POSITION, GENEVA_AT_POSITION
+
+// 1) We should always be sending the present position back to base station over rovecomm
+
+// 2) Therefore we are ALWAYS tracking state of our position, even in Open Loop, therefore we decouple getPosition and toPosition
+
+// 2) We should stop the driver from driving through the bottom/top limit switch, but not away from iter_swap
+
+// 3) When a Geneva position move is finished, we should make the driver drive off the limit switch a little bit in open loop before they command the next position move
+
+// 5) Geneva and Leadscrew should at least look very similar in implementation
+
 ////////////////////////////////////////
 // Drill pins drive Motor 1 on header X7
 
@@ -29,42 +43,26 @@ const uint8_t LEADSCREW_LIMIT_SWITCH_2_DEPLOY_PIN  = PE_2; //Uses LS 2 on X9
 const uint8_t LEADSCREW_LIMIT_SWITCH_3_RELOAD_PIN  = PE_1; //Uses LS 3 on X9
 const uint8_t LEADSCREW_LIMIT_SWITCH_4_EMPTY_PIN   = PE_0; //Uses LS 4 on X9
 const uint8_t LEADSCREW_LIMIT_SWITCH_5_TOP_PIN     = PB_5; //Uses LS 3 on X7
-////////////////////////////////////////////
-//Global Consts
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+enum GENEVA_POSITIONS    { GENEVA_OPENLOOP=0,    GENEVA_SLOT_1_HOME=1, GENEVA_SLOT_2=2,   GENEVA_SLOT_3=3,    GENEVA_SLOT_4=4,    GENEVA_SLOT_5=5, GENEVA_SLOT_6=6 }; 
+enum LEADSCREW_POSITIONS { LEADSCREW_OPENLOOP=0, LEADSCREW_BOTTOM=1,   LEADSCREW_EMPTY=2, LEADSCREW_DEPLOY=3, LEADSCREW_RELOAD=4, LEADSCREW_TOP=5 }; 
+
 const int LEADSCREW_TO_POSITION_SPEED = 500;
 const int GENEVA_TO_POSITION_SPEED    = 500;
 
-//Global variables
-uint16_t drill_speed;
+uint8_t geneva_command_position    = GENEVA_OPENLOOP;
+uint8_t geneva_present_position    = GENEVA_OPENLOOP; 
 
-int geneva_position = 1; 
+uint8_t leadscrew_command_position = LEADSCREW_OPENLOOP;
+uint8_t leadscrew_present_position = LEADSCREW_OPENLOOP;
+
+///////////////////////////
+
+uint16_t drill_speed;
 uint16_t geneva_speed;
-uint8_t geneva_goto_position = 0;
-  /*
-   * 0-Do Nothing
-   * 1-Pos 1
-   * 2-Pos 2
-   * ...
-   * 6-Pos 6
-   */
 uint16_t leadscrew_speed;
-bool leadscrew_going_up = 1;
-int leadscrew_position  = 0;
-  /*
-   * 1-Between Bottom and Deploy
-   * 2-Between Deploy and Reload
-   * 3-Between Reload and Empty
-   * 4-Between Empty and Top
-   */
-uint8_t leadscrew_goto_position = 0;
-  /*
-   * 0-Do Nothing (open loop
-   * 1-Bottom LS
-   * 2-Deploy LS
-   * 3-Empty LS
-   * 4-Reload LS
-   * 5-Top LS
-   */
 
 /////////////////////////////////////////
 RoveCommEthernetUdp  RoveComm;
@@ -74,6 +72,15 @@ RoveWatchdog         Watchdog;
 RoveVnh5019          DrillMotor;
 RoveVnh5019          GenevaMotor;
 RoveVnh5019          LeadScrewMotor;
+
+uint8_t leadscrewGetPosition(uint8_t leadscrew_present_position);
+uint8_t genevaGetPosition(   uint8_t geneva_present_position   )
+
+void leadscrewToPosition(uint8_t leadscrew_command_position);
+void genevaToPosition(   uint8_t geneva_command_position   );
+
+bool drivingPastBottomLimit(uint8_t bottom_limit_switch_pin, int16_t command_speed);
+bool drivingPastTopLimit(   uint8_t top_limit_switch_pin,    int16_t command_speed);
 
 void estop();
 
@@ -111,12 +118,11 @@ void setup()
   LeadScrewMotor.begin(LEADSCREW_INA_PIN, LEADSCREW_INB_PIN, LEADSCREW_PWM_PIN);
   GenevaMotor.begin(   GENEVA_INA_PIN,    GENEVA_INB_PIN,    GENEVA_PWM_PIN   );   
   DrillMotor.begin(    DRILL_INA_PIN,     DRILL_INB_PIN,     DRILL_PWM_PIN    );  
-
  
   Watchdog.begin(estop, 150);
 }
 
-///////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////
 
 void loop()
 {   
@@ -129,27 +135,22 @@ void loop()
   switch(data_id)
   {
     case LEADSCREW_OPEN_LOOP:
-      leadscrew_speed = *(int16_t*)(data);
-      leadscrew_going_up   = (leadscrew_speed == abs(leadscrew_speed));
-      
-      if   (digitalRead(LEADSCREW_LIMIT_SWITCH_5_TOP_PIN)    &&  leadscrew_going_up) 
-	  {  
-	    break; //If you're trying to go up when the top limit switch is engaged, break
-      }
-	  else if(digitalRead(LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN) && !leadscrew_going_up) 
+      leadscrew_speed = *(int16_t*)(data);	
+	  
+      if(  (!drivingPastBottomLimit(LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN, leadscrew_speed))
+	    && (!drivingPastTopLimit(   LEADSCREW_LIMIT_SWITCH_5_TOP_PIN,    leadscrew_speed)))
 	  {
-		break; //If you're trying to go down when the bottom limit switch is engaged, break
+        LeadScrewMotor.drive(leadscrew_speed); 
       }
 	  
-      LeadScrewMotor.drive(leadscrew_speed); 
-      leadscrew_goto_position = 0;  //Set to 0 so we don't try to go to a position    
-      Watchdog.clear();
+	  leadscrew_command_position = LEADSCREW_OPENLOOP;
+      Watchdog.clear();	  
       break;
 
     case GENEVA_OPEN_LOOP:
       geneva_speed = *(int16_t*)(data); 
       GenevaMotor.drive(geneva_speed);
-      geneva_goto_position = 0;       
+      geneva_command_position = GENEVA_OPENLOOP;      
       Watchdog.clear();
       break;
     
@@ -160,115 +161,126 @@ void loop()
       break;
     
     case LEADSCREW_TO_LIMIT_SWITCH:
-       leadscrew_goto_position = *(int8_t*)data;  //Set to the position we're trying to get to
+       leadscrew_command_position = *(int8_t*)data;
        Watchdog.clear();
        break;
     
     case GENEVA_TO_POSITION:
-      geneva_goto_position = *(int8_t*)data;
-      if(geneva_goto_position == 1) geneva_position = 2; //Special Case: To set the geneva home based on LS readings instead of position memory for position 1
+      geneva_command_position = *(int8_t*)data;      
       Watchdog.clear();
-      break;    
+      break; 
+	  
     default:
       break;
   }
-
-  ///////////////////////////////
-  //    LeadScrew Functions    //
-  ///////////////////////////////
-  //Limit Switch Stop////////////////////////////////////////////////////////////////////////////////////
-  if(digitalRead(LEADSCREW_LIMIT_SWITCH_5_TOP_PIN)    &&  leadscrew_going_up)
-  {
-    LeadScrewMotor.brake(0);
-  }
-  else if(digitalRead(LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN) && !leadscrew_going_up) 
-  {
-    LeadScrewMotor.brake(0);
-  }
-
-  //Track LeadScrew Position//////////////////////////////////////////////////////
-  if(digitalRead(LEADSCREW_LIMIT_SWITCH_4_EMPTY_PIN)  &&  leadscrew_going_up)
-  {
-    leadscrew_position = 4;
-  }
-  else if(digitalRead(LEADSCREW_LIMIT_SWITCH_4_EMPTY_PIN)  && !leadscrew_going_up)
-  {
-    leadscrew_position = 3;
-  }
-  else if(digitalRead(LEADSCREW_LIMIT_SWITCH_3_RELOAD_PIN) &&  leadscrew_going_up)
-  {
-    leadscrew_position = 3;
-  }
-  else if(digitalRead(LEADSCREW_LIMIT_SWITCH_3_RELOAD_PIN) && !leadscrew_going_up)
-  {
-    leadscrew_position = 2;
-  }
-  else if(digitalRead(LEADSCREW_LIMIT_SWITCH_2_DEPLOY_PIN) &&  leadscrew_going_up) 
-  {
-    leadscrew_position = 2;
-  }
-  else if(digitalRead(LEADSCREW_LIMIT_SWITCH_2_DEPLOY_PIN) && !leadscrew_going_up) 
-  {
-    leadscrew_position = 1;
-  }
-
-  //Move LeadScrew To position//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  if(leadscrew_goto_position == leadscrew_position)       
-  {
-	LeadScrewMotor.brake(0);                            //If you're at the position, break
-  }
-  else if (leadscrew_position < leadscrew_goto_position)
-  {
-    LeadScrewMotor.drive( LEADSCREW_TO_POSITION_SPEED);  //If you're below the position, move up
-    leadscrew_going_up = TRUE;
-  }
-  else 
-  {
-    LeadScrewMotor.drive(-LEADSCREW_TO_POSITION_SPEED);  //else move down
-    leadscrew_going_up = FALSE
-  }
-
-
-  //////////////////////////////////////////
-  //     Geneva To Position Functions     //
-  //////////////////////////////////////////
-  if(geneva_goto_position)
-  {
-    //Geneva Set Home//////////////////////////////////////////////////////////////////////////////////////
-    if(digitalRead(GENEVA_LIMIT_SWITCH_PIN) && digitalRead(CAROUSEL_LIMIT_SWITCH_PIN))
-    {
-      geneva_position = 1;
-      while(digitalRead(GENEVA_LIMIT_SWITCH_PIN))
-       {
-         GenevaMotor.drive(GENEVA_TO_POSITION_SPEED);
-       }
-    }
-   //Increment Geneva Position if limit switch is tripped
-    else if(digitalRead(GENEVA_LIMIT_SWITCH_PIN))
-    {
-       geneva_position ++;
-       while(digitalRead(GENEVA_LIMIT_SWITCH_PIN))
-       {
-         GenevaMotor.drive(GENEVA_TO_POSITION_SPEED);
-       }
-     }
-
-    //Geneva_position overflow//////////////////
-    if(geneva_position = 7) geneva_position = 1;
-
-    //Geneva Goto Position////////////////////////////////////////////////////////////////////////ToDo Make Else
-
-    if(geneva_position != geneva_goto_position)
-    {
-      GenevaMotor.drive(GENEVA_TO_POSITION_SPEED);
-    }
-    else
-    {
-      GenevaMotor.brake(GENEVA_TO_POSITION_SPEED); 
-    }
-  }
-
   
+  leadscrew_present_position = leadscrewGetPosition(leadscrew_present_position);
+  geneva_present_position    = genevaGetPosition(   geneva_present_position);
+  
+  RoveComm.write(LEADSCREW_AT_POSITION, sizeof(leadscrew_present_position), &leadscrew_present_position);
+  RoveComm.write(GENEVA_AT_POSITION,    sizeof(geneva_present_position),    &geneva_present_position);
+  
+  if(geneva_command_position != GENEVA_OPENLOOP)
+  {
+    leadscrewToPosition(leadscrew_present_position, leadscrew_command_position);
+  }
+  
+  if(leadscrew_command_position != LEADSCREW_OPENLOOP)
+  {
+    leadscrewToPosition(leadscrew_present_position, leadscrew_command_position);
+  }  
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+
+bool drivingPastBottomLimit(uint8_t bottom_limit_switch_pin, int16_t command_speed)
+{
+  return (digitalRead(bottom_limit_switch_pin) && (command_speed < 0));
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
+bool drivingPastTopLimit(uint8_t top_limit_switch_pin, int16_t command_speed)
+{
+  return (digitalRead(top_limit_switch_pin) && (command_speed > 0));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+uint8_t leadscrewGetPosition(uint8_t leadscrew_present_position)
+{  
+  if(digitalRead(LEADSCREW_LIMIT_SWITCH_5_TOP_PIN))
+  {
+    leadscrew_present_position = LEADSCREW_TOP;
+	
+  } else if(digitalRead(LEADSCREW_LIMIT_SWITCH_4_EMPTY_PIN))
+  {
+    leadscrew_present_position = LEADSCREW_EMPTY;
+	  
+  } else if(digitalRead(LEADSCREW_LIMIT_SWITCH_3_RELOAD_PIN))
+  {
+    leadscrew_present_position = LEADSCREW_RELOAD;
+	  
+  } else if(digitalRead(LEADSCREW_LIMIT_SWITCH_2_DEPLOY_PIN)) 
+  {
+    leadscrew_present_position = LEADSCREW_RELOAD;
+	  
+  } else if(digitalRead(LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN)) 
+  {
+    leadscrew_present_position = LEADSCREW_BOTTOM;
+  } 
+  return leadscrew_present_position;
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+
+void genevaGetPosition(uint8_t geneva_present_position)
+{
+  if(digitalRead(GENEVA_LIMIT_SWITCH_PIN) && digitalRead(CAROUSEL_LIMIT_SWITCH_PIN))
+  {
+    geneva_present_position = GENEVA_SLOT_1_HOME;
+  
+  } else if(digitalRead(GENEVA_LIMIT_SWITCH_PIN))
+  {
+    geneva_present_position++;
+
+    if(geneva_present_position > GENEVA_SLOT_6)
+	{		
+      geneva_present_position = GENEVA_SLOT_1_HOME;
+	}
+  }
+  return geneva_present_position;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
+void leadscrewToPosition(uint8_t leadscrew_present_position, uint8_t leadscrew_command_position)
+{
+  if(leadscrew_present_position == leadscrew_command_position)     
+  {
+	LeadScrewMotor.brake(0);  
+	
+  } else if (leadscrew_position < leadscrew_goto_position)
+  {
+    LeadScrewMotor.drive(LEADSCREW_TO_POSITION_SPEED);  
+  } else 
+  {
+    LeadScrewMotor.drive(-LEADSCREW_TO_POSITION_SPEED);
+  }
+}
+
+///////////////////////////////////////////////////////////////////////////////////////
+
+void genevaToPosition(uint8_t geneva_present_position, uint8_t geneva_command_position)
+{
+  if(geneva_position != geneva_command_position)
+  {
+    GenevaMotor.drive(GENEVA_TO_POSITION_SPEED);
+	
+  } else
+  {
+    GenevaMotor.brake(0); 
+  }
 }
 
 //////////////////////////
