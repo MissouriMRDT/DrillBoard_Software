@@ -15,7 +15,6 @@ const uint8_t GENEVA_INB_PIN          = PA_7;
 const uint8_t GENEVA_PWM_PIN          = PK_4;
 
 const uint8_t GENEVA_LIMIT_SWITCH_PIN   = PK_1; // Uses LS 1 on X7
-const uint8_t CAROUSEL_LIMIT_SWITCH_PIN = PK_0; // Uses LS 2 on X7
 
 /////////////////////////////////////////////////////////////////////////////////
 // Lead Screw pins drive Motor 1 on header X9
@@ -37,16 +36,9 @@ const int GENEVA_TO_POSITION_SPEED    = 500;
 //Global variables
 uint16_t drill_speed;
 
-int geneva_position = 1; 
 uint16_t geneva_speed;
-uint8_t geneva_goto_position = 0;
-  /*
-   * 0-Do Nothing
-   * 1-Pos 1
-   * 2-Pos 2
-   * ...
-   * 6-Pos 6
-   */
+uint16_t geneva_goto_position = 0;
+
 uint16_t leadscrew_speed;
 bool leadscrew_going_up = 1;
 int leadscrew_position  = 0;
@@ -165,8 +157,22 @@ void loop()
        break;
     
     case GENEVA_TO_POSITION:
-      geneva_goto_position = *(int8_t*)data;
-      if(geneva_goto_position == 1) geneva_position = 2; //Special Case: To set the geneva home based on LS readings instead of position memory for position 1
+      geneva_goto_position = *(int8_t*)data; // 1 for next position, 2 for previous position
+      if(digitalRead(GENEVA_LIMIT_SWITCH_PIN) && (geneva_goto_position == 1))
+	  {
+	    while(digitalRead(GENEVA_LIMIT_SWITCH_PIN))
+		{
+		  GenevaMotor.drive(GENEVA_TO_POSITION_SPEED);
+		}
+	  }
+	  else if(digitalRead(GENEVA_LIMIT_SWITCH_PIN) && (geneva_goto_position == 2))
+	  {
+	    while(digitalRead(GENEVA_LIMIT_SWITCH_PIN))
+		{
+		  GenevaMotor.drive(-GENEVA_TO_POSITION_SPEED);
+		}
+	  }
+		
       Watchdog.clear();
       break;    
     default:
@@ -232,40 +238,9 @@ void loop()
   //////////////////////////////////////////
   //     Geneva To Position Functions     //
   //////////////////////////////////////////
-  if(geneva_goto_position)
+  if(geneva_goto_position && digitalRead(GENEVA_LIMIT_SWITCH_PIN))
   {
-    //Geneva Set Home//////////////////////////////////////////////////////////////////////////////////////
-    if(digitalRead(GENEVA_LIMIT_SWITCH_PIN) && digitalRead(CAROUSEL_LIMIT_SWITCH_PIN))
-    {
-      geneva_position = 1;
-      while(digitalRead(GENEVA_LIMIT_SWITCH_PIN))
-       {
-         GenevaMotor.drive(GENEVA_TO_POSITION_SPEED);
-       }
-    }
-   //Increment Geneva Position if limit switch is tripped
-    else if(digitalRead(GENEVA_LIMIT_SWITCH_PIN))
-    {
-       geneva_position ++;
-       while(digitalRead(GENEVA_LIMIT_SWITCH_PIN))
-       {
-         GenevaMotor.drive(GENEVA_TO_POSITION_SPEED);
-       }
-     }
-
-    //Geneva_position overflow//////////////////
-    if(geneva_position = 7) geneva_position = 1;
-
-    //Geneva Goto Position////////////////////////////////////////////////////////////////////////ToDo Make Else
-
-    if(geneva_position != geneva_goto_position)
-    {
-      GenevaMotor.drive(GENEVA_TO_POSITION_SPEED);
-    }
-    else
-    {
-      GenevaMotor.brake(GENEVA_TO_POSITION_SPEED); 
-    }
+	GenevaMotor.brake(GENEVA_TO_POSITION_SPEED);
   }
 
   
