@@ -1,4 +1,9 @@
-#include "RoveWare.h"
+/*DrillBoard Software
+ * Rev 1 2018
+ * Used with 4 Drilboard Rev 1 2018 (2 per booster)
+ * Andrew Van Horn, Judah Schad * 
+ */
+ #include "RoveWare.h"
 
 // My opinions:
 
@@ -16,14 +21,12 @@
 
 ////////////////////////////////////////
 // Drill pins drive Motor 1 on header X7
-
 const uint8_t DRILL_INA_PIN  = PH_0;
 const uint8_t DRILL_INB_PIN  = PP_5;
 const uint8_t DRILL_PWM_PIN  = PG_1;
 
 /////////////////////////////////////////////////////////////////
 // Geneva pins drive Motor 2 on header X7
-
 const uint8_t GENEVA_INA_PIN          = PH_1;
 const uint8_t GENEVA_INB_PIN          = PA_7;
 const uint8_t GENEVA_PWM_PIN          = PK_4;
@@ -33,7 +36,6 @@ const uint8_t CAROUSEL_LIMIT_SWITCH_PIN = PK_0; // Uses LS 2 on X7
 
 /////////////////////////////////////////////////////////////////////////////////
 // Lead Screw pins drive Motor 1 on header X9
-
 const uint8_t LEADSCREW_INA_PIN           = PL_0;
 const uint8_t LEADSCREW_INB_PIN           = PH_2;
 const uint8_t LEADSCREW_PWM_PIN           = PF_1;
@@ -45,9 +47,9 @@ const uint8_t LEADSCREW_LIMIT_SWITCH_4_EMPTY_PIN   = PE_0; //Uses LS 4 on X9
 const uint8_t LEADSCREW_LIMIT_SWITCH_5_TOP_PIN     = PB_5; //Uses LS 3 on X7
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+//State Variables
 enum GENEVA_POSITIONS    { GENEVA_OPENLOOP=0,    GENEVA_SLOT_1_HOME=1, GENEVA_SLOT_2=2,   GENEVA_SLOT_3=3,    GENEVA_SLOT_4=4,    GENEVA_SLOT_5=5, GENEVA_SLOT_6=6 }; 
-enum LEADSCREW_POSITIONS { LEADSCREW_OPENLOOP=0, LEADSCREW_BOTTOM=1,   LEADSCREW_EMPTY=2, LEADSCREW_DEPLOY=3, LEADSCREW_RELOAD=4, LEADSCREW_TOP=5 }; 
+enum LEADSCREW_POSITIONS { LEADSCREW_OPENLOOP=0, LEADSCREW_BOTTOM=1,   LEADSCREW_DEPLOY=2, LEADSCREW_EMPTY=3, LEADSCREW_RELOAD=4, LEADSCREW_TOP=5 }; 
 
 const int LEADSCREW_TO_POSITION_SPEED = 500;
 const int GENEVA_TO_POSITION_SPEED    = 500;
@@ -58,8 +60,11 @@ uint8_t geneva_present_position    = GENEVA_OPENLOOP;
 uint8_t leadscrew_command_position = LEADSCREW_OPENLOOP;
 uint8_t leadscrew_present_position = LEADSCREW_OPENLOOP;
 
-///////////////////////////
+bool geneva_between_states    = 0;
+bool leadscrew_between_states = 0;
 
+///////////////////////////
+//Motor Sped Variables
 uint16_t drill_speed;
 uint16_t geneva_speed;
 uint16_t leadscrew_speed;
@@ -74,7 +79,7 @@ RoveVnh5019          GenevaMotor;
 RoveVnh5019          LeadScrewMotor;
 
 uint8_t leadscrewGetPosition(uint8_t leadscrew_present_position);
-uint8_t genevaGetPosition(   uint8_t geneva_present_position   )
+uint8_t genevaGetPosition(   uint8_t geneva_present_position);
 
 void leadscrewToPosition(uint8_t leadscrew_command_position);
 void genevaToPosition(   uint8_t geneva_command_position   );
@@ -138,12 +143,12 @@ void loop()
       leadscrew_speed = *(int16_t*)(data);	
 	  
       if(  (!drivingPastBottomLimit(LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN, leadscrew_speed))
-	    && (!drivingPastTopLimit(   LEADSCREW_LIMIT_SWITCH_5_TOP_PIN,    leadscrew_speed)))
-	  {
+	      && (!drivingPastTopLimit(   LEADSCREW_LIMIT_SWITCH_5_TOP_PIN,    leadscrew_speed)))
+	    {
         LeadScrewMotor.drive(leadscrew_speed); 
       }
 	  
-	  leadscrew_command_position = LEADSCREW_OPENLOOP;
+	    leadscrew_command_position = LEADSCREW_OPENLOOP;
       Watchdog.clear();	  
       break;
 
@@ -160,7 +165,7 @@ void loop()
       Watchdog.clear();
       break;
     
-    case LEADSCREW_TO_LIMIT_SWITCH:
+    case LEADSCREW_TO_POSITION:
        leadscrew_command_position = *(int8_t*)data;
        Watchdog.clear();
        break;
@@ -179,6 +184,14 @@ void loop()
   
   RoveComm.write(LEADSCREW_AT_POSITION, sizeof(leadscrew_present_position), &leadscrew_present_position);
   RoveComm.write(GENEVA_AT_POSITION,    sizeof(geneva_present_position),    &geneva_present_position);
+
+  uint8_t temp = leadscrewGetPosition(0);
+  RoveComm.write(LEADSCREW_LIMIT_SWITCH_TRIGGERED,   sizeof(uint8_t), &temp);
+  temp = digitalRead(GENEVA_LIMIT_SWITCH_PIN);
+  RoveComm.write(GENEVA_LIMIT_SWITCH_TRIGGERED,      sizeof(uint8_t), &temp);
+  temp = digitalRead(CAROUSEL_LIMIT_SWITCH_PIN);
+  RoveComm.write(CAROUSEL_LIMIT_SWITCH_TRIGGERED,    sizeof(uint8_t), &temp);
+  
   
   if(geneva_command_position != GENEVA_OPENLOOP)
   {
@@ -208,7 +221,7 @@ bool drivingPastTopLimit(uint8_t top_limit_switch_pin, int16_t command_speed)
 /////////////////////////////////////////////////////////////////////////////
 
 uint8_t leadscrewGetPosition(uint8_t leadscrew_present_position)
-{  
+{    
   if(digitalRead(LEADSCREW_LIMIT_SWITCH_5_TOP_PIN))
   {
     leadscrew_present_position = LEADSCREW_TOP;
@@ -223,33 +236,39 @@ uint8_t leadscrewGetPosition(uint8_t leadscrew_present_position)
 	  
   } else if(digitalRead(LEADSCREW_LIMIT_SWITCH_2_DEPLOY_PIN)) 
   {
-    leadscrew_present_position = LEADSCREW_RELOAD;
+    leadscrew_present_position = LEADSCREW_DEPLOY;
 	  
   } else if(digitalRead(LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN)) 
   {
     leadscrew_present_position = LEADSCREW_BOTTOM;
   } 
-  return leadscrew_present_position;
+  return(leadscrew_present_position);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
 
-void genevaGetPosition(uint8_t geneva_present_position)
+uint8_t genevaGetPosition(uint8_t geneva_present_position)
 {
   if(digitalRead(GENEVA_LIMIT_SWITCH_PIN) && digitalRead(CAROUSEL_LIMIT_SWITCH_PIN))
   {
     geneva_present_position = GENEVA_SLOT_1_HOME;
   
-  } else if(digitalRead(GENEVA_LIMIT_SWITCH_PIN))
-  {
+  }else if( digitalRead(GENEVA_LIMIT_SWITCH_PIN) && geneva_between_states && (geneva_speed>0))
+  {//Increment up if the motor is going on a limit switch moving forward
     geneva_present_position++;
-
-    if(geneva_present_position > GENEVA_SLOT_6)
-	{		
-      geneva_present_position = GENEVA_SLOT_1_HOME;
-	}
+  }else if(!digitalRead(GENEVA_LIMIT_SWITCH_PIN) && !geneva_between_states&& (geneva_speed<0))
+  {//Increment down if the mtor is going off a limit switch moving backward
+    geneva_present_position--;
   }
-  return geneva_present_position;
+  
+  geneva_between_states = !digitalRead(GENEVA_LIMIT_SWITCH_PIN);
+
+  //Rollover Position////////////////////////////
+  if(geneva_present_position > GENEVA_SLOT_6)
+	{		
+    geneva_present_position = GENEVA_SLOT_1_HOME;
+  }
+  return(geneva_present_position);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -258,9 +277,9 @@ void leadscrewToPosition(uint8_t leadscrew_present_position, uint8_t leadscrew_c
 {
   if(leadscrew_present_position == leadscrew_command_position)     
   {
-	LeadScrewMotor.brake(0);  
+	  LeadScrewMotor.brake(0);  
 	
-  } else if (leadscrew_position < leadscrew_goto_position)
+  } else if (leadscrew_present_position < leadscrew_command_position)
   {
     LeadScrewMotor.drive(LEADSCREW_TO_POSITION_SPEED);  
   } else 
@@ -273,13 +292,15 @@ void leadscrewToPosition(uint8_t leadscrew_present_position, uint8_t leadscrew_c
 
 void genevaToPosition(uint8_t geneva_present_position, uint8_t geneva_command_position)
 {
-  if(geneva_position != geneva_command_position)
+  if(geneva_present_position == geneva_command_position)     
   {
-    GenevaMotor.drive(GENEVA_TO_POSITION_SPEED);
-	
-  } else
+    LeadScrewMotor.brake(0);  
+  } else if (geneva_present_position < geneva_command_position)
   {
-    GenevaMotor.brake(0); 
+    LeadScrewMotor.drive(LEADSCREW_TO_POSITION_SPEED);  
+  } else 
+  {
+    LeadScrewMotor.drive(-LEADSCREW_TO_POSITION_SPEED);
   }
 }
 
