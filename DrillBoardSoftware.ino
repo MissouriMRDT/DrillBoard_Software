@@ -29,13 +29,12 @@ const uint8_t LEADSCREW_PWM_PIN           = PF_1;
 const uint8_t LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN  = PE_3; //Uses LS 1 on X9
 const uint8_t LEADSCREW_LIMIT_SWITCH_2_DEPLOY_PIN  = PE_2; //Uses LS 2 on X9
 const uint8_t LEADSCREW_LIMIT_SWITCH_3_RELOAD_PIN  = PE_1; //Uses LS 3 on X9
-const uint8_t LEADSCREW_LIMIT_SWITCH_4_EMPTY_PIN   = PE_0; //Uses LS 4 on X9
-const uint8_t LEADSCREW_LIMIT_SWITCH_5_TOP_PIN     = PB_5; //Uses LS 3 on X7
+const uint8_t LEADSCREW_LIMIT_SWITCH_4_TOP_PIN   = PE_0; //Uses LS 4 on X9
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //State Variables
 enum GENEVA_POSITIONS    { GENEVA_OPENLOOP=0,    GENEVA_SLOT_1_HOME=1, GENEVA_SLOT_2=2,   GENEVA_SLOT_3=3,    GENEVA_SLOT_4=4,    GENEVA_SLOT_5=5, GENEVA_SLOT_6=6 }; 
-enum LEADSCREW_POSITIONS { LEADSCREW_OPENLOOP=0, LEADSCREW_BOTTOM=1,   LEADSCREW_DEPLOY=2, LEADSCREW_RELOAD=3, LEADSCREW_EMPTY=4, LEADSCREW_TOP=5 }; 
+enum LEADSCREW_POSITIONS { LEADSCREW_OPENLOOP=0, LEADSCREW_BOTTOM=1,   LEADSCREW_DEPLOY=2, LEADSCREW_RELOAD=3, LEADSCREW_EMPTY=4, LEADSCREW_TOP=4 }; 
 
 uint8_t geneva_command_position    = GENEVA_OPENLOOP;
 uint8_t geneva_present_position    = GENEVA_SLOT_1_HOME; 
@@ -108,9 +107,8 @@ void setup()
   pinMode(LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN, INPUT);
   pinMode(LEADSCREW_LIMIT_SWITCH_2_DEPLOY_PIN, INPUT);
   pinMode(LEADSCREW_LIMIT_SWITCH_3_RELOAD_PIN, INPUT);
-  pinMode(LEADSCREW_LIMIT_SWITCH_4_EMPTY_PIN,  INPUT);
-  pinMode(LEADSCREW_LIMIT_SWITCH_5_TOP_PIN,    INPUT);
-  
+  pinMode(LEADSCREW_LIMIT_SWITCH_4_TOP_PIN,    INPUT);
+   
   LeadScrewMotor.begin(LEADSCREW_INA_PIN, LEADSCREW_INB_PIN, LEADSCREW_PWM_PIN);
   GenevaMotor.begin(   GENEVA_INA_PIN,    GENEVA_INB_PIN,    GENEVA_PWM_PIN   );   
   DrillMotor.begin(    DRILL_INA_PIN,     DRILL_INB_PIN,     DRILL_PWM_PIN    );  
@@ -129,6 +127,9 @@ void loop()
 
   RoveComm.read(&data_id, &data_size, data);
 
+  data_id = LEADSCREW_OPEN_LOOP;//Debug
+  
+
   switch(data_id)
   {      
     case DRILL_OPEN_LOOP:
@@ -138,10 +139,11 @@ void loop()
       break; 
 	  
     case LEADSCREW_OPEN_LOOP:
-      leadscrew_speed = *(int16_t*)(data);		  
+      leadscrew_speed = (int16_t)(data[1] << 8 || data[0]);		
+        leadscrew_speed = 200; //Debug
       if(  (!drivingPastBottomLimit(LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN, leadscrew_speed))
-	    && (!drivingPastTopLimit(   LEADSCREW_LIMIT_SWITCH_5_TOP_PIN,    leadscrew_speed)))
-	  {
+	    && (!drivingPastTopLimit(   LEADSCREW_LIMIT_SWITCH_4_TOP_PIN,    leadscrew_speed)))
+  	  {
         LeadScrewMotor.drive(leadscrew_speed); 
       }
       else
@@ -176,6 +178,9 @@ void loop()
 
   leadscrew_present_position = leadscrewGetPosition(leadscrew_present_position);
   geneva_present_position    = genevaGetPosition(geneva_present_position, geneva_speed);
+
+  Serial.print("Present Pos:");
+  Serial.println(leadscrew_present_position);
   
   RoveComm.write(LEADSCREW_AT_POSITION, sizeof(leadscrew_present_position), &leadscrew_present_position);
   RoveComm.write(GENEVA_AT_POSITION,    sizeof(geneva_present_position),    &geneva_present_position);
@@ -216,26 +221,48 @@ bool drivingPastTopLimit(uint8_t top_limit_switch_pin, int16_t command_speed)
 
 uint8_t leadscrewGetPosition(uint8_t leadscrew_present_position)
 {    
-  if(digitalRead(LEADSCREW_LIMIT_SWITCH_5_TOP_PIN))
+  if(digitalRead(LEADSCREW_LIMIT_SWITCH_4_TOP_PIN))
   {
     leadscrew_present_position = LEADSCREW_TOP;
 	
-  } else if(digitalRead(LEADSCREW_LIMIT_SWITCH_4_EMPTY_PIN))
-  {
-    leadscrew_present_position = LEADSCREW_EMPTY;
-	  
-  } else if(digitalRead(LEADSCREW_LIMIT_SWITCH_3_RELOAD_PIN))
-  {
-    leadscrew_present_position = LEADSCREW_RELOAD;
-	  
-  } else if(digitalRead(LEADSCREW_LIMIT_SWITCH_2_DEPLOY_PIN)) 
-  {
-    leadscrew_present_position = LEADSCREW_DEPLOY;
-	  
-  } else if(digitalRead(LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN)) 
+  } 
+  else if(digitalRead(LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN)) 
   {
     leadscrew_present_position = LEADSCREW_BOTTOM;
   }
+  else if(leadscrew_speed < 0)
+  {
+    if(digitalRead(LEADSCREW_LIMIT_SWITCH_2_DEPLOY_PIN))
+    {
+      leadscrew_present_position = LEADSCREW_DEPLOY;
+    }
+    else if(digitalRead(LEADSCREW_LIMIT_SWITCH_3_RELOAD_PIN))
+    {
+      leadscrew_present_position = LEADSCREW_RELOAD;
+    }
+  }
+  else if(leadscrew_speed > 0)
+  {
+    if(digitalRead(LEADSCREW_LIMIT_SWITCH_2_DEPLOY_PIN))
+    {
+      while(digitalRead(LEADSCREW_LIMIT_SWITCH_2_DEPLOY_PIN))
+      {
+        LeadScrewMotor.drive(leadscrew_speed);
+      }
+      leadscrew_present_position = LEADSCREW_DEPLOY;
+    }
+
+    if(digitalRead(LEADSCREW_LIMIT_SWITCH_3_RELOAD_PIN))
+    {
+      while(digitalRead(LEADSCREW_LIMIT_SWITCH_3_RELOAD_PIN))
+      {
+        LeadScrewMotor.drive(leadscrew_speed);
+      }
+      leadscrew_present_position = LEADSCREW_RELOAD;
+    }
+    
+  }
+
   
   return leadscrew_present_position;
 }
@@ -280,7 +307,7 @@ void leadscrewToPosition(uint8_t leadscrew_present_position, uint8_t leadscrew_c
   {
 	LeadScrewMotor.brake(0);  
   } else if ((leadscrew_present_position < leadscrew_command_position) 
-	     && (!drivingPastTopLimit(LEADSCREW_LIMIT_SWITCH_5_TOP_PIN,        LEADSCREW_TO_POSITION_SPEED)))
+	     && (!drivingPastTopLimit(LEADSCREW_LIMIT_SWITCH_4_TOP_PIN,        LEADSCREW_TO_POSITION_SPEED)))
   {
     LeadScrewMotor.drive(LEADSCREW_TO_POSITION_SPEED);  
   } else if ((leadscrew_present_position > leadscrew_command_position) 
