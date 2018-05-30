@@ -43,8 +43,11 @@ bool geneva_between_positions = 1;
 uint8_t leadscrew_command_position;
 uint8_t leadscrew_present_position;
 
-const int LEADSCREW_TO_POSITION_SPEED = 500;
+const int LEADSCREW_TO_POSITION_SPEED = 300;
 const int GENEVA_TO_POSITION_SPEED    = 500;  //I'm getting strange results for drive(-1000) it stops
+
+const int LEADSCREW_MAX_SPEED = 300;
+const int GENEVA_MAX_SPEED    = 00;
 
 
 ///////////////////////////
@@ -54,7 +57,6 @@ int16_t geneva_speed;
 int16_t leadscrew_speed;
 /////////////////////////////////////
 
-RoveCommEthernetUdp  RoveComm;
 
 RoveWatchdog         Watchdog;
 
@@ -83,7 +85,7 @@ void estop();
 
 void setup() 
 {
-  RoveComm.begin(ROVE_FIRST_OCTET, ROVE_SECOND_OCTET, ROVE_THIRD_OCTET, DRILLBOARD_FOURTH_OCTET);
+  roveComm_Begin(ROVE_FIRST_OCTET, ROVE_SECOND_OCTET, ROVE_THIRD_OCTET, DRILLBOARD_FOURTH_OCTET);
   delay(1);
   
   Serial.begin(9600);
@@ -120,27 +122,37 @@ void setup()
 
 void loop()
 {   
-  delay(10);
+  Watchdog.clear();//Debug
+  delay(1);
   uint16_t data_id   = 0; 
   size_t   data_size = 0; 
   uint8_t  data[2];
 
-  RoveComm.read(&data_id, &data_size, data);
+  roveComm_GetMsg(&data_id, &data_size, data);
 
-  data_id = LEADSCREW_OPEN_LOOP;//Debug
+  /*Serial.println("");
+  Serial.print("ID: ");
+  Serial.println(data_id);
+  Serial.print("Data: ");
+  Serial.println(*(int16_t*)data); */
+
+  data_id = DRILL_OPEN_LOOP;
   
 
   switch(data_id)
   {      
     case DRILL_OPEN_LOOP:
-      drill_speed = *(int16_t*)(data);   
-      DrillMotor.drive(geneva_speed);
+      drill_speed = *(int16_t*)(data);  
+      drill_speed= 500;
+      DrillMotor.drive(drill_speed);
       Watchdog.clear();
+      Serial.print("Driving Drill OL: ");
+      Serial.println(drill_speed);
       break; 
 	  
     case LEADSCREW_OPEN_LOOP:
-      leadscrew_speed = (int16_t)(data[1] << 8 || data[0]);		
-        leadscrew_speed = 200; //Debug
+      leadscrew_speed = *(int16_t*)(data);
+      leadscrew_speed = map(leadscrew_speed, RED_MAX_FORWARD, RED_MAX_REVERSE, LEADSCREW_MAX_SPEED, -LEADSCREW_MAX_SPEED);
       if(  (!drivingPastBottomLimit(LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN, leadscrew_speed))
 	    && (!drivingPastTopLimit(   LEADSCREW_LIMIT_SWITCH_4_TOP_PIN,    leadscrew_speed)))
   	  {
@@ -148,27 +160,32 @@ void loop()
       }
       else
       {
-        LeadScrewMotor.brake(0);
+        LeadScrewMotor.brake(leadscrew_speed);
+        Serial.println("LS Brake");
       }	  
 	  leadscrew_command_position = LEADSCREW_OPENLOOP; 
       Watchdog.clear();	  
       break;
 
     case GENEVA_OPEN_LOOP:
-      geneva_speed = *(int16_t*)(data); 
+      geneva_speed = *(int16_t*)(data);
+      geneva_speed = map(geneva_speed, RED_MAX_FORWARD, RED_MAX_REVERSE, GENEVA_MAX_SPEED, -GENEVA_MAX_SPEED); 
       GenevaMotor.drive(geneva_speed);
-      geneva_command_position = GENEVA_OPENLOOP;      
+      geneva_command_position = GENEVA_OPENLOOP;   
+      Serial.print("Driving Geneva OL: ");
+      Serial.println(geneva_speed);   
       Watchdog.clear();
       break;
     
 	
     case LEADSCREW_TO_POSITION:
        leadscrew_command_position = *(int8_t*)data;
+       
        Watchdog.clear();	  	      
        break;
     
     case GENEVA_TO_POSITION:
-      geneva_command_position = *(int8_t*)data;      
+      geneva_command_position = *(int8_t*)data; 
       Watchdog.clear();
       break; 
 	  
@@ -179,18 +196,20 @@ void loop()
   leadscrew_present_position = leadscrewGetPosition(leadscrew_present_position);
   geneva_present_position    = genevaGetPosition(geneva_present_position, geneva_speed);
 
-  Serial.print("Present Pos:");
-  Serial.println(leadscrew_present_position);
+  Serial.print("Pos: ");
+  Serial.println(geneva_present_position);
+  Serial.print("Com Pos: ");
+  Serial.println(geneva_command_position);
   
-  RoveComm.write(LEADSCREW_AT_POSITION, sizeof(leadscrew_present_position), &leadscrew_present_position);
-  RoveComm.write(GENEVA_AT_POSITION,    sizeof(geneva_present_position),    &geneva_present_position);
+  roveComm_SendMsg(LEADSCREW_AT_POSITION, sizeof(leadscrew_present_position), &leadscrew_present_position);
+  roveComm_SendMsg(GENEVA_AT_POSITION,    sizeof(geneva_present_position),    &geneva_present_position);
 
   uint8_t temp = leadscrewGetPosition(0);
-  RoveComm.write(LEADSCREW_LIMIT_SWITCH_TRIGGERED,   sizeof(uint8_t), &temp);
+  roveComm_SendMsg(LEADSCREW_LIMIT_SWITCH_TRIGGERED,   sizeof(uint8_t), &temp);
   temp = digitalRead(GENEVA_LIMIT_SWITCH_PIN);
-  RoveComm.write(GENEVA_LIMIT_SWITCH_TRIGGERED,      sizeof(uint8_t), &temp);
+  roveComm_SendMsg(GENEVA_LIMIT_SWITCH_TRIGGERED,      sizeof(uint8_t), &temp);
   temp = digitalRead(CAROUSEL_LIMIT_SWITCH_PIN);
-  RoveComm.write(CAROUSEL_LIMIT_SWITCH_TRIGGERED,    sizeof(uint8_t), &temp);
+  roveComm_SendMsg(CAROUSEL_LIMIT_SWITCH_TRIGGERED,    sizeof(uint8_t), &temp);
 
   delay(10);
   if(geneva_command_position != GENEVA_OPENLOOP)
@@ -247,7 +266,8 @@ uint8_t leadscrewGetPosition(uint8_t leadscrew_present_position)
     {
       while(digitalRead(LEADSCREW_LIMIT_SWITCH_2_DEPLOY_PIN))
       {
-        LeadScrewMotor.drive(leadscrew_speed);
+        LeadScrewMotor.drive(LEADSCREW_TO_POSITION_SPEED);
+        Watchdog.clear();
       }
       leadscrew_present_position = LEADSCREW_DEPLOY;
     }
@@ -256,7 +276,8 @@ uint8_t leadscrewGetPosition(uint8_t leadscrew_present_position)
     {
       while(digitalRead(LEADSCREW_LIMIT_SWITCH_3_RELOAD_PIN))
       {
-        LeadScrewMotor.drive(leadscrew_speed);
+        LeadScrewMotor.drive(LEADSCREW_TO_POSITION_SPEED);
+        Watchdog.clear();
       }
       leadscrew_present_position = LEADSCREW_RELOAD;
     }
@@ -305,15 +326,18 @@ void leadscrewToPosition(uint8_t leadscrew_present_position, uint8_t leadscrew_c
 {
   if(leadscrew_present_position == leadscrew_command_position)     
   {
-	LeadScrewMotor.brake(0);  
+  	LeadScrewMotor.brake(0); 
+   Serial.println("I'm Here!"); 
   } else if ((leadscrew_present_position < leadscrew_command_position) 
 	     && (!drivingPastTopLimit(LEADSCREW_LIMIT_SWITCH_4_TOP_PIN,        LEADSCREW_TO_POSITION_SPEED)))
   {
-    LeadScrewMotor.drive(LEADSCREW_TO_POSITION_SPEED);  
+    LeadScrewMotor.drive(LEADSCREW_TO_POSITION_SPEED); 
+    leadscrew_speed = 1; 
   } else if ((leadscrew_present_position > leadscrew_command_position) 
 	     && (!drivingPastBottomLimit(LEADSCREW_LIMIT_SWITCH_1_BOTTOM_PIN, -LEADSCREW_TO_POSITION_SPEED)))
   {
     LeadScrewMotor.drive(-LEADSCREW_TO_POSITION_SPEED);
+    leadscrew_speed = -1;
   }
 }
 
@@ -348,6 +372,7 @@ void genevaToPosition(uint8_t geneva_present_position, uint8_t geneva_command_po
 //////////////////////////
 void estop()
 {
+  Serial.println("Watchdog Triggered");
   DrillMotor.brake(0);  
   GenevaMotor.brake(0);
   LeadScrewMotor.brake(0);      
