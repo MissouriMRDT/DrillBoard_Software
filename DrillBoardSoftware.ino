@@ -1,7 +1,7 @@
 /*DrillBoard Software
  * Rev 1 2018
  * Used with 4 Drilboard Rev 1 2018 (2 per booster)
- * Andrew Van Horn, Judah Schad * 
+ * Andrew Van Horn, Judah Schad 
  */
  #include "RoveWare.h"
 
@@ -43,11 +43,11 @@ bool geneva_between_positions = 1;
 uint8_t leadscrew_command_position;
 uint8_t leadscrew_present_position;
 
-const int LEADSCREW_TO_POSITION_SPEED = 300;
-const int GENEVA_TO_POSITION_SPEED    = 500;  //I'm getting strange results for drive(-1000) it stops
+const int LEADSCREW_TO_POSITION_SPEED = 100;
+const int GENEVA_TO_POSITION_SPEED    = 500; 
 
-const int LEADSCREW_MAX_SPEED = 300;
-const int GENEVA_MAX_SPEED    = 00;
+const int LEADSCREW_MAX_SPEED = 150;
+//const int GENEVA_MAX_SPEED    = 500; I was having problems with values below -500
 
 
 ///////////////////////////
@@ -134,20 +134,16 @@ void loop()
   Serial.print("ID: ");
   Serial.println(data_id);
   Serial.print("Data: ");
-  Serial.println(*(int16_t*)data); */
-
-  data_id = DRILL_OPEN_LOOP;
-  
+  Serial.println(*(int16_t*)data); */  
 
   switch(data_id)
   {      
     case DRILL_OPEN_LOOP:
       drill_speed = *(int16_t*)(data);  
-      drill_speed= 500;
       DrillMotor.drive(drill_speed);
       Watchdog.clear();
-      Serial.print("Driving Drill OL: ");
-      Serial.println(drill_speed);
+    //  Serial.print("Driving Drill OL: ");
+     // Serial.println(drill_speed);
       break; 
 	  
     case LEADSCREW_OPEN_LOOP:
@@ -160,20 +156,38 @@ void loop()
       }
       else
       {
-        LeadScrewMotor.brake(leadscrew_speed);
-        Serial.println("LS Brake");
+        LeadScrewMotor.brake(0);
+        //Serial.println("LS Brake");
       }	  
-	  leadscrew_command_position = LEADSCREW_OPENLOOP; 
+	    leadscrew_command_position = LEADSCREW_OPENLOOP; 
+
+      if(leadscrew_speed == 0)
+      {
+        LeadScrewMotor.brake(0);
+     //   Serial.println("LS Brake");
+      }
+
       Watchdog.clear();	  
       break;
 
     case GENEVA_OPEN_LOOP:
       geneva_speed = *(int16_t*)(data);
-      geneva_speed = map(geneva_speed, RED_MAX_FORWARD, RED_MAX_REVERSE, GENEVA_MAX_SPEED, -GENEVA_MAX_SPEED); 
-      GenevaMotor.drive(geneva_speed);
+      if(geneva_speed>0)
+      {
+        GenevaMotor.drive(1000); 
+      //  Serial.println(1000); 
+      }
+      else if(geneva_speed<0)
+      {
+        GenevaMotor.drive(-1000); 
+      //  Serial.println(-1000);  
+      }
+      else
+      {
+        GenevaMotor.brake(0);
+       // Serial.println("Geneva Brake");
+      }
       geneva_command_position = GENEVA_OPENLOOP;   
-      Serial.print("Driving Geneva OL: ");
-      Serial.println(geneva_speed);   
       Watchdog.clear();
       break;
     
@@ -196,10 +210,13 @@ void loop()
   leadscrew_present_position = leadscrewGetPosition(leadscrew_present_position);
   geneva_present_position    = genevaGetPosition(geneva_present_position, geneva_speed);
 
+  Serial.println("");
   Serial.print("Pos: ");
-  Serial.println(geneva_present_position);
+  Serial.println(leadscrew_present_position);
   Serial.print("Com Pos: ");
-  Serial.println(geneva_command_position);
+  Serial.println(leadscrew_command_position);
+  Serial.print("Speed: ");
+  Serial.println(leadscrew_speed);
   
   roveComm_SendMsg(LEADSCREW_AT_POSITION, sizeof(leadscrew_present_position), &leadscrew_present_position);
   roveComm_SendMsg(GENEVA_AT_POSITION,    sizeof(geneva_present_position),    &geneva_present_position);
